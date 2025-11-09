@@ -3,6 +3,7 @@
 from slurmonitor import SlurmJobMonitor
 
 import argparse  # command-line arguments
+from pathlib import Path
 from rich.console import Console
 
 console = Console()
@@ -12,8 +13,6 @@ def main():
     """Main entry point"""
     parser = argparse.ArgumentParser()
     parser.add_argument('job_ids', nargs='+', help='Slurm job IDs to monitor')
-    parser.add_argument('--discord-webhook', required=True,
-                        help='Discord webhook URL')
     parser.add_argument('--check-interval', type=int, default=60,
                        help='Seconds between status checks (default: 60)')
     parser.add_argument('--periodic-updates', action='store_true',
@@ -24,6 +23,14 @@ def main():
                        help='Log files corresponding to each job (optional)')
 
     args = parser.parse_args()
+
+    # Take Discord webhook from .txt file
+    webhook_path: Path = Path("./my_webhook_url.txt")
+    if not webhook_path.is_file():
+        console.print(f"[red]Error:[/red] Discord webhook file '{webhook_path}' not found.")
+        return
+    with open(webhook_path, 'r', encoding='utf-8') as f:
+        args.discord_webhook = f.read().strip()
 
     # Create single job monitor
     monitor = SlurmJobMonitor(
