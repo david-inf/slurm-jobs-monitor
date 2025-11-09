@@ -1,2 +1,3 @@
-scripts/my_webhook_url.txt
+assets/my_webhook_url.txt
 *.log
+__pycache__/

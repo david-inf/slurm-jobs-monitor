@@ -7,14 +7,26 @@ Testing Slurm jobs monitoring
 from slurmonitor.core import DiscordNotifier, JobMonitor
 
 from threading import Lock, Thread
+from pathlib import Path
+from rich.console import Console
 
-YOUR_WEBHOOK_URL = ""
+console = Console()
 
 
 def test_slurm_monitor():
     """Testing the job monitoring on a dummy Slurm job"""
-    notifier = DiscordNotifier(YOUR_WEBHOOK_URL)
+    webhook_path: Path = Path("assets/my_webhook_url.txt")
+    if not webhook_path.is_file():
+        console.print(f"[red]Error:[/red] Discord webhook file '{webhook_path}' not found.")
+        return
+    with open(webhook_path, 'r', encoding='utf-8') as f:
+        discord_webhook = f.read().strip()
+    console.print(f"Retrieved webhook URL [bold purple]{discord_webhook}[/bold purple]")
+
+    notifier = DiscordNotifier(discord_webhook)
     monitor = JobMonitor(notifier)
+
+    # TODO: create a dummy slurm job
 
     def monitor_job():
         return None

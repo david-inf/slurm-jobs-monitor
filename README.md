@@ -1,4 +1,4 @@
-# A simple Slurm job notifier
+# Slurm Discord Monitor
 
 Setup the notifier and receive updates via Discord
 
@@ -6,3 +6,7 @@ Setup the notifier and receive updates via Discord
 2. Discord webhook
 3. Launch a job
 4. Launch the program and monitor it
+
+## Installation
+
+## Quick Start

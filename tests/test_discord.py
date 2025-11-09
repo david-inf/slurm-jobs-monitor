@@ -4,25 +4,41 @@ from slurmonitor.core import DiscordNotifier
 from slurmonitor.utils import EMOJI_MAP
 
 from threading import Thread, Lock
+from pathlib import Path
 from rich.console import Console
 
-YOUR_WEBHOOK_URL = ""
 console = Console()
 
 
 def test_discord_message():
     """Send a simple message to Discord"""
-    notifier = DiscordNotifier(YOUR_WEBHOOK_URL)  # who sends the messages
+    webhook_path: Path = Path("assets/my_webhook_url.txt")
+    if not webhook_path.is_file():
+        console.print(f"[red]Error:[/red] Discord webhook file '{webhook_path}' not found.")
+        return
+    with open(webhook_path, 'r', encoding='utf-8') as f:
+        discord_webhook = f.read().strip()
+    console.print(f"Retrieved webhook URL [bold purple]{discord_webhook}[/bold purple]")
+
+    notifier = DiscordNotifier(discord_webhook)  # who sends the messages
     msg = "Hello World!"  # content
     levels = list(EMOJI_MAP.keys())
     for level in levels:
         # Send a message at each possible level (custom)
         notifier.send(msg, level)
+    console.print("Messages sent!")
 
 
 def test_threads_discord_message():
     """Send multiple Discord messages (simulating multiple jobs)"""
-    notifier = DiscordNotifier(YOUR_WEBHOOK_URL)
+    webhook_path: Path = Path("assets/my_webhook_url.txt")
+    if not webhook_path.is_file():
+        console.print(f"[red]Error:[/red] Discord webhook file '{webhook_path}' not found.")
+        return
+    with open(webhook_path, 'r', encoding='utf-8') as f:
+        discord_webhook = f.read().strip()
+
+    notifier = DiscordNotifier(discord_webhook)
     n_jobs = 3  # jobs under monitoring
     # messages for each job
     msgs = ["Hello World 1!", "Hello World 2!", "Hello World 3!"]
@@ -51,3 +67,8 @@ def test_threads_discord_message():
 
             console.print(f"Started monitoring job {job_id}")
             notifier.send(f"Started monitoring job **{job_id}**", "info")
+
+
+if __name__ == "__main__":
+    # test_discord_message()
+    test_threads_discord_message()
