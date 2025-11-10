@@ -112,12 +112,6 @@ class JobMonitor:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
 
             if result.returncode != 0 or not result.stdout.strip():
-                # Job not in queue, check accounting
-                # NOTE: sacct command might not be available
-                cmd = ['sacct', '-j', self.job_id, '-n', '-o', 'State', '-X']
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-                if result.stdout.strip():
-                    return result.stdout.strip().split()[0]
                 return "UNKNOWN"
 
             return result.stdout.strip()
@@ -170,7 +164,7 @@ class MultiJobMonitor:
     How to keep this guy running with tmux:
     """
 
-    def __init(self, discord_webhook: str, check_interval: int = 60,
+    def __init__(self, discord_webhook: str, check_interval: int = 60,
                periodic_updates: bool = True, update_interval: int = 3600):
         self.check_interval = check_interval
         self.periodic_updates = periodic_updates
