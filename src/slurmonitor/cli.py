@@ -19,6 +19,7 @@ def main():
                        help='Send periodic summary updates')
     parser.add_argument('--update-interval', type=int, default=3600,
                        help='Seconds between periodic summaries (default: 3600)')
+    # TODO: should automatically search for log files based on job IDs
     parser.add_argument('--log-files', nargs='*',
                        help='Log files corresponding to each job (optional)')
 

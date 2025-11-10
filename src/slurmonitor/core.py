@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path  # better handling of paths
 from typing import Dict, List, Optional
 from threading import Thread, Lock  # ???
+import logging
 import requests  # how to get to discord
 
 
@@ -165,7 +166,7 @@ class MultiJobMonitor:
     """
 
     def __init__(self, discord_webhook: str, check_interval: int = 60,
-               periodic_updates: bool = True, update_interval: int = 3600):
+                 periodic_updates: bool = False, update_interval: int = 3600):
         self.check_interval = check_interval
         self.periodic_updates = periodic_updates
         self.update_interval = update_interval
