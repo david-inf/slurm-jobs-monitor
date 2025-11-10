@@ -1,6 +1,6 @@
 """Core module for the Slurm job monitoring system"""
 
-from .utils import EMOJI_MAP, COLOR_MAP
+from .utils import EMOJI_MAP, COLOR_MAP, STATUS_EMOJI
 
 import time
 import subprocess  # executing slurm commands
@@ -43,6 +43,30 @@ class DiscordNotifier:
         except Exception as e:
             console.print(f"Failed to send Discord notification: {e}")
 
+    def send_summary(self, jobs_status: Dict[str, Dict]):
+        """Send a summary of all monitored jobs"""        
+        lines = ["**📊 Jobs Summary**\n"]
+        for job_id, info in jobs_status.items():
+            status = info.get('status', 'UNKNOWN')
+            emoji = STATUS_EMOJI.get(status, "❓")
+            runtime = info.get('runtime', 'N/A')
+            lines.append(f"{emoji} **Job {job_id}**: {status} ({runtime})")
+        
+        message = "\n".join(lines)
+        
+        embed = {
+            "title": "Multi-Job Status Summary",
+            "description": message,
+            "color": 9807270,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        try:
+            with self.lock:
+                requests.post(self.webhook_url, json={"embeds": [embed]}, timeout=10)
+        except Exception as e:
+            print(f"Failed to send summary: {e}")
+
 
 class JobMonitor:
     """
@@ -50,9 +74,10 @@ class JobMonitor:
     - 
     """
 
-    def __init__(self, job_id, notifier: DiscordNotifier):
+    def __init__(self, job_id, notifier: DiscordNotifier, log_file: Optional[str] = None):
         self.job_id = job_id
-        self.notifier = notifier  # not needed here?
+        self.notifier = notifier
+        self.log_file = log_file
 
         self.last_status = None  # needs to be updated
         self.running = True  # launch job monitor

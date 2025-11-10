@@ -24,3 +24,13 @@ COLOR_MAP = {
     "log": 9807270,
     "stats": 9936031
 }
+
+STATUS_EMOJI = {
+    "RUNNING": "🟢",
+    "PENDING": "🟡",
+    "COMPLETED": "✅",
+    "FAILED": "❌",
+    "TIMEOUT": "⏱️",
+    "CANCELLED": "🚫",
+    "UNKNOWN": "❓"
+}
