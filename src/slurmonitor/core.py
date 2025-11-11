@@ -9,15 +9,13 @@ Design notes:
   understand and maintain for users who will run it from CLI or tmux.
 """
 
-from .utils import EMOJI_MAP, COLOR_MAP, STATUS_EMOJI
+from .discord_notifier import DiscordNotifier
 
 import time
 import subprocess  # used to execute Slurm CLI commands (scontrol, squeue)
-from datetime import datetime, timezone
 from typing import Dict, Optional
 from threading import Thread, Lock
 import logging
-import requests  # used for sending Discord webhook HTTP requests
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,74 +24,6 @@ TERMINAL_STATES = [
     "COMPLETED", "FAILED", "TIMEOUT", "CANCELLED",
     "NODE_FAIL", "PREEMPTED", "OUT_OF_MEMORY"
 ]
-
-# Removed - logic simplified in _monitor_job method
-
-
-class DiscordNotifier:
-    """Send notifications to Discord via webhook"""
-
-    def __init__(self, webhook_url: str):
-        self.webhook_url = webhook_url
-        self.lock = Lock()
-
-    def send(self, message: str, level: str = "info") -> None:
-        """Send a message to Discord"""
-        # Build a Discord embed payload; using embeds gives nicer formatting
-        # and supports colors/timestamps which are useful for monitoring.
-        embed = {
-            "description": f"{EMOJI_MAP.get(level, '🔔')} {message}",
-            "color": COLOR_MAP.get(level, 3447003),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "footer": {
-                "text": "Slurm Monitor"
-            }
-        }
-
-        payload = {"embeds": [embed]}
-
-        # Use a lock to avoid concurrent requests from multiple threads
-        # colliding or exceeding rate limits. We make a best-effort send
-        # and swallow exceptions to avoid crashing the monitor loop.
-        try:
-            with self.lock:
-                response = requests.post(self.webhook_url, json=payload, timeout=10)
-                # Basic handling of Discord rate limits: Discord may return
-                # 429 with a retry_after value (milliseconds). Respect it and
-                # retry once. For a robust production system a backoff/queue
-                # would be recommended, but that adds complexity here.
-                if response.status_code == 429:
-                    retry_after = response.json().get('retry_after', 1)
-                    time.sleep(retry_after / 1000.0)
-                    requests.post(self.webhook_url, json=payload, timeout=10)
-        except Exception as e:
-            # Log at info level to avoid noisy noise in common deployments.
-            logger.info(f"Failed to send Discord notification: {e}")
-
-    def send_summary(self, jobs_status: Dict[str, Dict]) -> None:
-        """Send a summary of all monitored jobs"""        
-        lines = []
-        for job_id, info in jobs_status.items():
-            status = info.get('status', 'UNKNOWN')
-            emoji = STATUS_EMOJI.get(status, "❓")
-            runtime = info.get('runtime', 'N/A')
-            lines.append(f"{emoji} **Job {job_id}**: {status} ({runtime})")
-
-        message = "\n".join(lines)
-
-        embed = {
-            "title": "📊 Jobs Summary",
-            "description": message,
-            "color": 9807270,
-            "timestamp": datetime.now().isoformat(),
-        }
-
-        # Reuse the same locking and best-effort sending pattern used above.
-        try:
-            with self.lock:
-                requests.post(self.webhook_url, json={"embeds": [embed]}, timeout=10)
-        except Exception as e:
-            logger.info(f"Failed to send summary: {e}")
 
 
 class JobMonitor:
@@ -184,7 +114,26 @@ class MultiJobMonitor:
     """
     Monitor multiple Slurm jobs simultaneously
 
-    How to keep this guy running with tmux:
+    USAGE PATTERNS:
+
+    1. Batch monitoring (exit when all jobs complete):
+       ```python
+       monitor = MultiJobMonitor(webhook_url)
+       monitor.add_job("12345")
+       monitor.add_job("12346")
+       monitor.start(exit_when_done=True)  # Exits when both jobs finish
+       ```
+
+    2. Long-running service (continuous monitoring):
+       ```python
+       monitor = MultiJobMonitor(webhook_url)
+       monitor.add_job("12345")
+       monitor.start(exit_when_done=False)  # Keeps running forever
+       ```
+
+    CURRENT LIMITATION:
+    - Jobs can only be added before calling start()
+    - Once start() is called with exit_when_done=True, it exits when all jobs finish
     """
 
     def __init__(self, discord_webhook: str, check_interval: int = 60,
@@ -229,6 +178,31 @@ class MultiJobMonitor:
 
                 logging.info(f"Started monitoring job {job_id}")
                 self.notifier.send(f"Started monitoring job **{job_id}**", "info")
+
+            logger.info(f"Jobs currently monitored: {list(self.monitors.keys())}")
+            logger.info(f"Threads currently running: {list(self.threads.keys())}")
+
+    def remove_job(self, job_id: str) -> bool:
+        """
+        Remove a job from monitoring (for runtime job management)
+
+        Args:
+            job_id: The Slurm job ID to stop monitoring
+
+        Returns:
+            True if job was removed, False if job wasn't being monitored
+
+        Note: This gracefully stops the monitoring thread. The thread will
+              exit on its next iteration when it checks monitor.running.
+        """
+        with self.lock:
+            if job_id in self.monitors:
+                logger.info(f"[Job {job_id}] Requesting removal from monitoring")
+                self.monitors[job_id].stop()  # Signal thread to exit
+                return True
+            else:
+                logger.warning(f"[Job {job_id}] Not currently being monitored")
+                return False
 
     def _monitor_job(self, monitor: JobMonitor) -> None:
         """Monitor a single job in its own thread"""
@@ -282,8 +256,9 @@ class MultiJobMonitor:
                         self.notifier.send(message, "pending")
 
                     # Update the last known status
+                    last_status = monitor.last_status
                     monitor.last_status = status
-                    logger.info(f"[Job {job_id}] Status changed to {status}")
+                    logger.info(f"[Job {job_id}] Status changed to {status} from {last_status}")
 
                 # Wait before next check
                 time.sleep(self.check_interval)
@@ -305,14 +280,11 @@ class MultiJobMonitor:
                 # Delete Thread object
                 del self.threads[job_id]
                 logger.info(f"[Job {job_id}] Removed monitoring thread")
-                logger.info(f"Jobs currently monitored: {list(self.threads.keys())}")
+                logger.info(f"Threads currently running: {list(self.threads.keys())}")
 
     def _send_periodic_summary(self) -> None:
         """Send periodic summary of all monitored jobs"""
         while self.running:
-            # Wait for next update
-            time.sleep(self.update_interval)
-
             # If there are job monitor activated
             if self.monitors:
                 with self.lock:
@@ -324,8 +296,16 @@ class MultiJobMonitor:
                 if jobs_status:
                     self.notifier.send_summary(jobs_status)
 
-    def start(self) -> None:
-        """Start the monitoring system"""
+            # Wait for next update
+            time.sleep(self.update_interval)
+
+    def start(self, exit_when_done: bool = True) -> None:
+        """Start the monitoring system
+        
+        Args:
+            exit_when_done: If True, automatically exit when all jobs complete.
+                          If False, keep running indefinitely (useful for runtime job management).
+        """
         if self.periodic_updates:
             # Automatically sets the periodic summary thread
             summary_thread = Thread(target=self._send_periodic_summary)
@@ -334,23 +314,54 @@ class MultiJobMonitor:
 
         # This starts an infinite loop to keep the main thread alive
         try:
-            # Wait while monitor is running. Use `self.running` as the canonical
-            # flag controlling the runtime; previously code used
-            # `self.running` which is not defined at init. Using
-            # `self.running` avoids accidental attribute errors.
+            # Wait while monitor is running
             while self.running:
-                time.sleep(1)
+                time.sleep(5)  # Check every 5 seconds (in case of self.stop() call)
+
+                # Check if there are any active monitors
+                # Needs this context manager everytime one interacts with monitors (threadsafety)
+                with self.lock:
+                    active_count = len(self.monitors)
+
+                if active_count == 0:
+                    if exit_when_done:
+                        # TEMPORARY SOLUTION: Exit when no jobs are being monitored
+                        logging.info("No active job monitors remaining. Exiting...")
+                        self.running = False
+                        # Just break, no need to call self.stop()
+                        break
+                    else:
+                        # Keep running, waiting for jobs to be added at runtime
+                        # (requires implementing add_job_runtime() method)
+                        logger.debug("No active monitors, but continuing to run (exit_when_done=False)")
+                        
         except KeyboardInterrupt:
+            # Exits the while loop and stops monitoring if any
+            logging.info("\nReceived keyboard interrupt (Ctrl+C)")
             self.stop()
 
     def stop(self) -> None:
-        """Stop all monitoring"""
-        logging.info("\nStopping all monitors...")
+        """Stop all monitoring and clean up resources"""
+        logging.info("\n" + "=" * 60)
+        logging.info("Stopping all monitors...")
+        logging.info("=" * 60)
+
         # Flip the canonical running flag so threads exit their loops.
         self.running = False
 
         with self.lock:
+            active_jobs = list(self.monitors.keys())
             for monitor in self.monitors.values():
                 monitor.stop()
 
-        self.notifier.send("Monitoring stopped for all jobs", "warning")
+        if active_jobs:
+            logging.info(f"Stopped monitoring {len(active_jobs)} job(s): {active_jobs}")
+            self.notifier.send(
+                f"Monitoring stopped for {len(active_jobs)} job(s): {', '.join(active_jobs)}", 
+                "warning"
+            )
+        else:
+            logging.info("No active jobs to stop")
+
+        logging.info("Monitor shutdown complete")
+        logging.info("=" * 60)

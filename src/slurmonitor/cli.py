@@ -17,21 +17,20 @@ def main():
                        help='Seconds between status checks (default: 60)')
     parser.add_argument('--periodic-updates', action='store_true',
                        help='Send periodic summary updates')
-    parser.add_argument('--update-interval', type=int, default=3600,
-                       help='Seconds between periodic summaries (default: 3600)')
+    parser.add_argument('--update-interval', type=int, default=20*60,
+                       help='Seconds between periodic summaries (default: 1200)')
     # TODO: should automatically search for log files based on job IDs
-    parser.add_argument('--log-files', nargs='*',
-                       help='Log files corresponding to each job (optional)')
 
     args = parser.parse_args()
 
     # Take Discord webhook from .txt file
-    webhook_path: Path = Path("./my_webhook_url.txt")
+    webhook_path: Path = Path("./assets/my_webhook_url.txt")
     if not webhook_path.is_file():
         console.print(f"[red]Error:[/red] Discord webhook file '{webhook_path}' not found.")
         return
     with open(webhook_path, 'r', encoding='utf-8') as f:
         args.discord_webhook = f.read().strip()
+    console.print("✓ Retrieved webhook URL")
 
     # Create single job monitor
     monitor = SlurmJobMonitor(
@@ -42,14 +41,14 @@ def main():
     )
 
     # Add jobs to monitor
-    log_files = args.log_files or []
-    for i, job_id in enumerate(args.job_ids):
-        log_file = log_files[i] if i < len(log_files) else None
-        monitor.add_job(job_id, log_file)
+    for i, job_id in enumerate(args.job_ids, start=1):
+        monitor.add_job(job_id)
+        console.print(f"✓ Added job {i}: [bold]{job_id}[/bold] to monitoring list")
 
     # Start monitoring
-    console.print(f"Monitoring {len(args.job_ids)} job(s). Press Ctrl+C to stop.")
+    console.print(f"Monitoring {len(monitor.monitors)} job(s). Press Ctrl+C to stop.")
     monitor.start()
+    console.print("✓ Monitor stopped")
 
 
 def hello_monitor():

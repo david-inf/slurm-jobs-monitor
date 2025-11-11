@@ -54,7 +54,6 @@ def test_slurm_monitor():
     if not webhook_path.is_file():
         console.print(f"[red]Error:[/red] Discord webhook file '{webhook_path}' not found.")
         return
-
     with open(webhook_path, 'r', encoding='utf-8') as f:
         discord_webhook = f.read().strip()
     console.print("✓ Retrieved webhook URL")

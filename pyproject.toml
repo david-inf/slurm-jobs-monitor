@@ -1,6 +1,6 @@
 [project]
 name = "slurmonitor"
-version = "1.0.0"
+version = "1.1.0"
 description = "A simple system for monitoring Slurm jobs via Discord"
 readme = "README.md"
 authors = [
