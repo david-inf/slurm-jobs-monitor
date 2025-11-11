@@ -1,3 +1,5 @@
-assets/my_webhook_url.txt
 *.log
 __pycache__/
+
+assets/my_webhook_url.txt
+assets/config.yaml

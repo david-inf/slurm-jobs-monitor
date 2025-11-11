@@ -13,7 +13,8 @@ dependencies = [
 ]
 
 [project.scripts]
-slurmonitor = "slurmonitor.cli:test"
+slurmonitor = "slurmonitor.cli:main"
+hello-monitor = "slurmonitor.cli:hello_monitor"
 
 [build-system]
 requires = ["uv_build>=0.9.0,<0.10.0"]

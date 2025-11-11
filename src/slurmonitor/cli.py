@@ -52,8 +52,9 @@ def main():
     monitor.start()
 
 
-def test():
-    print("Hello World!")
+def hello_monitor():
+    """Just to do a test and install all packages"""
+    print("Hello from slurmonitor")
 
 
 if __name__ == "__main__":
