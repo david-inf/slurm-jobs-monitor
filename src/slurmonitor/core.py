@@ -10,12 +10,14 @@ Design notes:
 """
 
 from .discord_notifier import DiscordNotifier
+from .agent import LogSummarizerAgent
 
 import time
 import subprocess  # used to execute Slurm CLI commands (scontrol, squeue)
 from typing import Dict, Optional
 from threading import Thread, Lock
 import logging
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -88,7 +90,7 @@ class JobMonitor:
             lines.append(f"Reason: `{info['Reason']}`")
 
         return '\n'.join(lines)
-    
+
     def get_status_dict(self) -> Dict:
         """Get current status as dictionary"""
         info = self.get_job_info()
@@ -100,6 +102,30 @@ class JobMonitor:
                 # TODO: maybe add something more?
             }
         return {'status': self.last_status or 'UNKNOWN', 'runtime': 'N/A'}
+
+    def summarize_std_out(self, model: Optional[LogSummarizerAgent] = None) -> str:
+        """Use a text summarization pipeline on the StdOut file (.out)"""
+        # Retrieve StdOut file
+        info_dict: Dict = self.get_job_info()
+        # Extract the StdOut key if exists
+        stdout_path: Path = Path(info_dict.get('StdOut', ''))
+        if stdout_path.exists():
+            try:
+                with open(stdout_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    if model is not None:
+                        # Use the LogSummarizerAgent to summarize the content
+                        summary = "TODO: implement model summarization"
+                    else:
+                        # Just a simple placeholder for actual summarization logic
+                        summary = content[-10:] + "..." if len(content) > 500 else content
+                    return summary
+
+            except Exception as e:
+                logger.info(f"[Job {self.job_id}] Error reading StdOut file: {e}")
+                return "Error reading StdOut file."
+
+        return "StdOut file not found."
 
     def stop(self) -> None:
         """Stop monitoring this job"""
@@ -136,11 +162,21 @@ class MultiJobMonitor:
     - Once start() is called with exit_when_done=True, it exits when all jobs finish
     """
 
-    def __init__(self, discord_webhook: str, check_interval: int = 60,
-                 periodic_updates: bool = False, update_interval: int = 3600):
+    def __init__(
+            self,
+            discord_webhook: str,
+            check_interval: int = 60,
+            periodic_updates: bool = False,
+            update_interval: int = 3600,
+            use_smrz_pipe: bool = False,  # whether to use a summarization pipeline
+        ):
         self.check_interval = check_interval  # seconds between checks
         self.periodic_updates = periodic_updates  # whether to send periodic summaries
         self.update_interval = update_interval  # seconds between periodic updates
+
+        self.smrz_agent = None
+        if use_smrz_pipe:
+            self.smrz_agent = LogSummarizerAgent()
 
         self.monitors: Dict[str, JobMonitor] = {}
         self.threads: Dict[int, Thread] = {}
@@ -290,13 +326,23 @@ class MultiJobMonitor:
             # If there are job monitor activated
             if self.monitors:
                 with self.lock:
+                    # Get info using scontrol command
                     jobs_status = {
-                        job_id: monitor.get_status_dict() 
+                        job_id: monitor.get_status_dict()
+                        for job_id, monitor in self.monitors.items()
+                    }
+                    # Text summarization pipeline
+                    jobs_summary = {
+                        job_id: monitor.summarize_std_out(model=self.smrz_agent)
                         for job_id, monitor in self.monitors.items()
                     }
 
                 if jobs_status:
                     self.notifier.send_summary(jobs_status)
+                if jobs_summary:
+                    for job_id, summary in jobs_summary.items():
+                        
+                        self.notifier.send(f"**Job {job_id} StdOut Summary:**\n{summary}", "info")
 
             # Wait for next update
             time.sleep(self.update_interval)

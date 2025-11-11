@@ -74,9 +74,20 @@ sbatch tests/dummy.sh
 uv run slurmonitor JOB_ID --check-interval 15 --periodic-updates --update-interval 60
 ```
 
+## Features
+
+- Real-time monitoring of Slurm jobs
+- Discord notifications for job status changes
+- Log file summarization using AI
+- Periodic updates on job progress
+- Easy setup with Discord webhooks
+
 
 ## Enhancements
 
 - [ ] Use rich tables for better CLI readability
+- [ ] From webhook on .txt to a YAML config file with other options (e.g., default check interval)
 - [ ] Extract other infos from the job (job-name, user, etc.) and include them in the notifications
 - [ ] Add screenshots here in the docs that show the monitor in action
+- [ ] Basic log (StdOut) summarization/detection of anomalies
+- [ ] Integrate LogSummarizerAgent for better log summarization

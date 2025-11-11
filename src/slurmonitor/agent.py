@@ -116,7 +116,6 @@ class LogSummarizerAgent:
 
         # (2) Create prompt for the model
         prompt = self._prompt_template(log_content)
-
         # (3) Tokenize input
         inputs = self.tokenizer(
             prompt,
@@ -126,10 +125,9 @@ class LogSummarizerAgent:
         ).to(self.device)
 
         # (4) Generate summary
+        inference_start = time.time()
         if verbose:
             logger.info(f"Generating summary for: {log_path.name}")
-
-        inference_start = time.time()
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
@@ -139,7 +137,6 @@ class LogSummarizerAgent:
                 no_repeat_ngram_size=3,
             )
         self.metrics['inference_time'] = time.time() - inference_start
-
         summary = self.tokenizer.decode(
             outputs[0],
             skip_special_tokens=True,
@@ -155,7 +152,6 @@ class LogSummarizerAgent:
 
         if verbose:
             logger.info(f"Metrics: {self.metrics}")
-
         return summary
 
     def _memory_footprint(self) -> float:
