@@ -1,0 +1,49 @@
+
+Loading configs...
+Loading config file: heavy_tail_llms/scripts/configs/datasets/wikitext103.yaml
+Loading config file: heavy_tail_llms/scripts/configs/models/gpt2.yaml
+Loading config file: heavy_tail_llms/scripts/configs/optimizers/adamw.yaml
+Applying overrides from string (int, float, bool, None parsing supported)
+Configs loaded!
+
+───────────────────── Optuna study gpt2_wiki103_adamw_hpo ──────────────────────
+              Study gpt2_wiki103_adamw_hpo               
+┏━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Field     ┃ Value                                     ┃
+┡━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ Sampler   │ TPESampler                                │
+│ Pruner    │ MedianPruner                              │
+│ Dataset   │ Salesforce/wikitext (wikitext-103-raw-v1) │
+│ Model     │ GPT                                       │
+│ Optimizer │ AdamW                                     │
+│ epochs    │ 15                                        │
+│ trials    │ 2                                         │
+│ seed      │ 42                                        │
+└───────────┴───────────────────────────────────────────┘
+────────────────────────────── Launching trial 0 ───────────────────────────────
+Loading dataset and tokenizer...
+
+Building GPT model...
+  GPT ready, configs: GPTConfig(token_vocab_size=50257, token_context_len=1024, 
+token_embd_method='positional', embd_dim=768, num_layers=12, num_attn_heads=12, 
+dropout=0.2, activation_fn='gelu', bias=False)
+
+Setting up optimizer...
+  Optimizer loaded (AdamW): {'lr': 3.1489116479568635e-05, 'betas': [0.9, 
+0.999], 'eps': 1e-08, 'weight_decay': 0.02, 'amsgrad': False, 'maximize': False,
+'foreach': None, 'capturable': False, 'differentiable': False, 'fused': True, 
+'decoupled_weight_decay': True}
+Trial params:{'lr': 3.1489116479568635e-05}
+Training
+  Entering training loop for epoch 1...
+  Finished epoch 1: processed 1000 batches, runtime: 3.45m (4.83batch/s)
+  Train loss: 6.6801e+00
+  Entering training loop for epoch 2...
+  Finished epoch 2: processed 1000 batches, runtime: 3.43m (4.85batch/s)
+  Train loss: 4.6015e+00
+  Entering training loop for epoch 3...
+  Finished epoch 3: processed 1000 batches, runtime: 3.43m (4.85batch/s)
+  Train loss: 3.7109e+00
+  Entering training loop for epoch 4...
+  Finished epoch 4: processed 1000 batches, runtime: 3.43m (4.86batch/s)
+  Train loss: 3.0967e+00

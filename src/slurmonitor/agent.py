@@ -20,7 +20,8 @@ class LogSummarizerAgent:
         device: str = "cpu",
         use_quantization: bool = True,
         max_input_length: int = 1024,
-        max_output_length: int = 256
+        max_output_length: int = 256,
+        # use_causal_model: bool = False,  # default use a seq2seq model
     ) -> None:
         """
         Initialize the LogSummarizerAgent.
@@ -56,24 +57,34 @@ class LogSummarizerAgent:
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         # Load model with optimizations
         if use_quantization and device == "cpu":
-            # Dynamic quantization for CPU (reduces memory ~4x)
-            logger.info("Loading model with int8 quantization...")
-            self.model = AutoModelForSeq2SeqLM.from_pretrained(
-                model_name,
-                torch_dtype=torch.float32
-            )
-            self.model = torch.quantization.quantize_dynamic(
-                self.model,
-                {torch.nn.Linear},
-                dtype=torch.qint8
-            )
+            # Prefer Hugging Face / bitsandbytes 8-bit loading on CPU.
+            # This requires `bitsandbytes` (bnb) and a compatible `transformers`.
+            logger.info("Attempting to load model with 8-bit quantization (bitsandbytes)...")
+            try:
+                # load_in_8bit places 8-bit params on the requested device via device_map.
+                # Use an explicit cpu device map to avoid device auto-placement.
+                self.model = AutoModelForSeq2SeqLM.from_pretrained(
+                    model_name,
+                    load_in_8bit=True,
+                    device_map={"": "cpu"},
+                )
+            except Exception as e:
+                # If bitsandbytes or compatible transformers aren't available, fall back.
+                logger.warning(
+                    "Failed to load 8-bit quantized model with bitsandbytes: %s. Falling back to float32.",
+                    e,
+                )
+                self.model = AutoModelForSeq2SeqLM.from_pretrained(
+                    model_name,
+                    dtype=torch.float32,
+                )
         else:
             # Standard loading
             dtype = torch.float16 if device == "cuda" else torch.float32
             logger.info(f"Loading model with dtype: {dtype}")
             self.model = AutoModelForSeq2SeqLM.from_pretrained(
                 model_name,
-                torch_dtype=dtype
+                dtype=dtype
             )
 
         self.model = self.model.to(device)
@@ -91,8 +102,9 @@ class LogSummarizerAgent:
     def _prompt_template(self, log_content: str) -> str:
         """Create a prompt for the model based on log content."""
         prompt = (
-            "Summarize the following Slurm job log. "
-            "Focus on key events, errors, and overall job status.\n\n"
+            "Describe in few sentences the following log file content. "
+            "This is a partial log file of a GPT pretraining.\n\n"
+            # "Focus on key events, errors, and overall job status.\n\n"
             f"{log_content}\n\n"
             "Summary:"
         )

@@ -1,21 +1,41 @@
 """Sandbox for testing the AI Agent"""
 
+from slurmonitor.agent import LogSummarizerAgent
+
+from pathlib import Path
+from rich.console import Console
+
+console = Console()
+
+
 def test_agent_summarization():
-    from src.slurmonitor.agent import LogSummarizerAgent
+    """
+    Test the LogSummarizerAgent summarization functionality alone.
 
-    agent = LogSummarizerAgent(model_name="google/flan-t5-small", device="cpu")
-    sample_log = (
-        "Job started at 2024-01-01 12:00:00\n"
-        "Loading data...\n"
-        "Data loaded successfully.\n"
-        "Training model...\n"
-        "Epoch 1/10 - Loss: 0.8\n"
-        "Epoch 2/10 - Loss: 0.6\n"
-        "Model training completed.\n"
-        "Job finished at 2024-01-01 12:30:00\n"
+    We have a full log file from a Slurm job. The idea is to stream
+    this log to the agent and get a summary simulating a real use case.
+    """
+    console.print("\n[bold blue]Testing LogSummarizerAgent Summarization[/bold blue]")
+    log_path: Path = Path("tests/2392_exp1_0.out")
+    if not log_path.is_file():
+        console.print(f"Test log file '{log_path}' not found. Skipping test.")
+        return
+    console.print(f"✓ Loaded test log file: {log_path}")
+
+    ckpt = "google/flan-t5-base"
+    # ckpt = "facebook/bart-large-cnn"
+    # ckpt = "Qwen/Qwen3-4B-Instruct-2507"
+    agent = LogSummarizerAgent(
+        model_name=ckpt,
+        device="cpu",
+        use_quantization=False,
+        use_causal_model=True
     )
+    console.print("✓ Initialized LogSummarizerAgent")
+    summary = agent.summarize(log_path, verbose=True)
+    console.print("\n[bold green]Generated Summary:[/bold green]")
+    console.print(summary)
 
-    summary = agent.summarize(sample_log)
-    assert isinstance(summary, str)
-    assert "Job started" in summary
-    assert "Job finished" in summary
+
+if __name__ == "__main__":
+    test_agent_summarization()

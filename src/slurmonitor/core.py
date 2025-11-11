@@ -111,15 +111,16 @@ class JobMonitor:
         stdout_path: Path = Path(info_dict.get('StdOut', ''))
         if stdout_path.exists():
             try:
-                with open(stdout_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    if model is not None:
-                        # Use the LogSummarizerAgent to summarize the content
-                        summary = "TODO: implement model summarization"
-                    else:
-                        # Just a simple placeholder for actual summarization logic
-                        summary = content[-10:] + "..." if len(content) > 500 else content
-                    return summary
+                if model is not None:
+                    # Use the LogSummarizerAgent to summarize the content
+                    summary = model.summarize(stdout_path, verbose=False)
+                else:
+                    with open(stdout_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    # Just a simple placeholder for actual summarization logic
+                    summary = content[-10:] + "..." if len(content) > 500 else content
+
+                return summary
 
             except Exception as e:
                 logger.info(f"[Job {self.job_id}] Error reading StdOut file: {e}")
