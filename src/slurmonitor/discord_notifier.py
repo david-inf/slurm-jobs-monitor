@@ -96,10 +96,11 @@ class DiscordNotifier:
         """Send a summary of all monitored jobs"""        
         lines = []
         for job_id, info in jobs_status.items():
+            job_name = info.get('job_name', "UNKNOWN")
             status = info.get('status', 'UNKNOWN')
             emoji = STATUS_EMOJI.get(status, "❓")
             runtime = info.get('runtime', 'N/A')
-            lines.append(f"{emoji} **Job {job_id}**: {status} ({runtime})")
+            lines.append(f"{emoji} **Job {job_id}** ({job_name}): {status} ({runtime})")
 
         message = "\n".join(lines)
 

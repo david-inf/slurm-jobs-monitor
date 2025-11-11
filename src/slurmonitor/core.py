@@ -29,10 +29,9 @@ TERMINAL_STATES = [
 class JobMonitor:
     """Monitor a single Slurm job by sending notifications to Discord"""
 
-    def __init__(self, job_id, notifier: DiscordNotifier, log_file: Optional[str] = None):
+    def __init__(self, job_id, notifier: DiscordNotifier):
         self.job_id = job_id
         self.notifier = notifier
-        self.log_file = log_file
 
         self.last_status = None  # needs to be updated
         self.running = True  # if this job monitor is running
@@ -79,7 +78,7 @@ class JobMonitor:
     def format_job_info(self, info: Dict) -> str:
         """Format job info for Discord message"""
         lines = [
-            f"**Job {self.job_id}**",
+            f"**Job {self.job_id}** ({info.get('JobName', 'N/A')})",
             f"Status: `{info.get('JobState', 'UNKNOWN')}`",
             f"Runtime: `{info.get('RunTime', 'N/A')}`",
             f"Node(s): `{info.get('NodeList', 'N/A')}`",
@@ -95,6 +94,7 @@ class JobMonitor:
         info = self.get_job_info()
         if info:
             return {
+                'job_name': info.get('JobName', 'N/A'),
                 'status': info.get('JobState', 'UNKNOWN'),
                 'runtime': info.get('RunTime', 'N/A'),
                 # TODO: maybe add something more?
@@ -154,7 +154,7 @@ class MultiJobMonitor:
         # consider switching to an event-driven model (asyncio) to reduce
         # resource usage.
 
-    def add_job(self, job_id: str, log_file: Optional[str] = None) -> None:
+    def add_job(self, job_id: str) -> None:
         """
         Add a job to monitor.
         Intentionally avoids complex lifecycle management so the
@@ -163,7 +163,7 @@ class MultiJobMonitor:
         with self.lock:
             if job_id not in self.monitors:
                 # Create JobMonitor object
-                monitor = JobMonitor(job_id, self.notifier, log_file)
+                monitor = JobMonitor(job_id, self.notifier)
                 # Add the monitor to the monitors dict
                 self.monitors[job_id] = monitor
 
@@ -234,26 +234,28 @@ class MultiJobMonitor:
 
                 # Check for status changes and send notifications
                 if status != monitor.last_status:
-                    message = f"{monitor.format_job_info(info)}"
+                    message = monitor.format_job_info(info)
 
-                    # Determine notification level and whether to stop monitoring
-                    if status == "RUNNING" and monitor.last_status in [None, "PENDING"]:
-                        # Job just started running
-                        self.notifier.send(message, "running")
-
-                    elif status == "COMPLETED":
-                        # Job completed successfully
-                        self.notifier.send(message, "completed")
-                        monitor.stop()  # Stop monitoring completed jobs
-
+                    # Map status to notification level and whether to stop monitoring
+                    if status == "COMPLETED":
+                        level, stop = "completed", True
                     elif status in TERMINAL_STATES:
-                        # Job failed, cancelled, timed out, etc.
-                        self.notifier.send(message, "error")
-                        monitor.stop()  # Stop monitoring failed jobs
-
+                        level, stop = "error", True
+                    elif status == "RUNNING":
+                        level, stop = "running", False
                     elif status == "PENDING":
-                        # Job is waiting in queue
-                        self.notifier.send(message, "pending")
+                        level, stop = "pending", False
+                    else:
+                        level, stop = "info", False
+
+                    self.notifier.send(message, level)
+
+                    if stop:
+                        monitor.stop()
+
+                    last_status = monitor.last_status
+                    monitor.last_status = status
+                    logger.info(f"[Job {job_id}] Status changed to {status} from {last_status}")
 
                     # Update the last known status
                     last_status = monitor.last_status
@@ -329,6 +331,7 @@ class MultiJobMonitor:
                         logging.info("No active job monitors remaining. Exiting...")
                         self.running = False
                         # Just break, no need to call self.stop()
+                        self.notifier.send("All monitored jobs have completed. Monitor is exiting.", "info")
                         break
                     else:
                         # Keep running, waiting for jobs to be added at runtime
@@ -365,3 +368,4 @@ class MultiJobMonitor:
 
         logging.info("Monitor shutdown complete")
         logging.info("=" * 60)
+        self.notifier.send("Slurm Monitor has been stopped.", "info")

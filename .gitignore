@@ -1,11 +1,14 @@
 *.log
 __pycache__/
+.venv/
+.pytest_cache/
+.vscode/
 
 assets/my_webhook_url.txt
 assets/config.yaml
 
-tests/dummy.sh
-tests/dummy.py
+/logs/
 
+/examples/
 examples/quick_start.py
 examples/runtime_management.py

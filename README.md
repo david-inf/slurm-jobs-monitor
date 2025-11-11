@@ -4,17 +4,21 @@ Multi-job Slurm monitoring with real-time Discord notifications.
 
 ## Installation
 
+Requirements: [uv](https://uv.run) (version >= 1.4.0)
+
 ```bash
 # Clone the repo
 git clone slurm-jobs-monitor
 cd slurm-jobs-monitor
 
-# Install with uv
+# Install with uv and just test the hello world monitor
 uv run hello-monitor
 ```
 
 
 ## Quick Start
+
+This program just needs to be in an entry node of the Slurm-manged cluster.
 
 ```bash
 # Monitor a single job that checks every 30 seconds
@@ -51,3 +55,28 @@ tmux attach -t slurmonitor
 # Close the session when done:
 tmux kill-session -t slurmonitor
 ```
+
+### Run a test
+
+Run a simple test (you should see Discord notifications and the job running in the cluster):
+```bash
+# Run the test
+uv run tests/test_slurm_monitor.py
+```
+
+Run one more test:
+```bash
+# Launch a job
+chmod +x tests/dummy.sh
+sbatch tests/dummy.sh
+
+# Monitor the job (replace JOB_ID with the actual job ID)
+uv run slurmonitor JOB_ID --check-interval 15 --periodic-updates --update-interval 60
+```
+
+
+## Enhancements
+
+- [ ] Use rich tables for better CLI readability
+- [ ] Extract other infos from the job (job-name, user, etc.) and include them in the notifications
+- [ ] Add screenshots here in the docs that show the monitor in action

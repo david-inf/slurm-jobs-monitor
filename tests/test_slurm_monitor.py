@@ -34,8 +34,8 @@ print("Dummy job completed successfully", flush=True)
 
 DUMMY_BATCH = """#!/bin/bash
 #SBATCH --job-name=monitor_test
-#SBATCH --output=slurm_test_%j.out
-#SBATCH --error=slurm_test_%j.err
+#SBATCH --output=logs/slurm_test_%j.out
+#SBATCH --error=logs/slurm_test_%j.err
 #SBATCH --time=00:10:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
@@ -98,7 +98,7 @@ def test_slurm_monitor():
         console.print(f"✓ Submitted job with ID: [bold green]{job_id}[/bold green]")
 
     except FileNotFoundError:
-        console.print("[red]Error:[/red] 'sbatch' command not found. Is Slurm installed?")
+        console.print("[red]Error:[/red] 'sbatch' command not found. Are you logged in to a Slurm-enabled node?")
         Path(script_path).unlink(missing_ok=True)
         Path(batch_path).unlink(missing_ok=True)
         return
@@ -157,7 +157,7 @@ def test_slurm_monitor():
     console.print("✓ Cleaned up temporary files")
 
     # Try to clean up Slurm output files (they use the job ID in the name)
-    for out_file in Path('.').glob(f'slurm_test_{job_id}.*'):
+    for out_file in Path('.').glob(f'logs/slurm_test_{job_id}.*'):
         out_file.unlink(missing_ok=True)
 
     console.print("\n[bold green]✓ Test completed successfully![/bold green]")
