@@ -43,11 +43,11 @@ uv run slurmonitor 12345 12346 12347
 
 ### Run in a persistent session
 
-Use `tmux` to run the monitor in a persistent session:
+Once you have launched jobs, you can use `tmux` to run the monitor in a persistent session:
 ```bash
 tmux new -s slurmonitor
 uv run slurmonitor 12345
-# Detach with Ctrl+b d
+# Detach with Ctrl+b d (then you can exit the shell safely)
 
 # To re-attach later:
 tmux attach -t slurmonitor
@@ -71,12 +71,12 @@ chmod +x tests/dummy.sh
 sbatch tests/dummy.sh
 
 # Monitor the job (replace JOB_ID with the actual job ID)
-uv run slurmonitor JOB_ID --check-interval 15 --periodic-updates --update-interval 60
+uv run slurmonitor JOB_ID --check-interval 10 --periodic-updates --update-interval 20
 ```
 
 ## Features
 
-- Real-time monitoring of Slurm jobs
+- Multi-threaded real-time monitoring of multiple Slurm jobs (launched via `sbatch`)
 - Discord notifications for job status changes
 - Log file summarization using AI
 - Periodic updates on job progress

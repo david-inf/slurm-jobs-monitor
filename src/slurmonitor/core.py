@@ -10,11 +10,11 @@ Design notes:
 """
 
 from .discord_notifier import DiscordNotifier
-from .agent import LogSummarizerAgent
+from .agent import LogSummarizerAgent, SimpleLogSummarizer
 
 import time
 import subprocess  # used to execute Slurm CLI commands (scontrol, squeue)
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 from threading import Thread, Lock
 import logging
 from pathlib import Path
@@ -95,15 +95,11 @@ class JobMonitor:
         """Get current status as dictionary"""
         info = self.get_job_info()
         if info:
-            return {
-                'job_name': info.get('JobName', 'N/A'),
-                'status': info.get('JobState', 'UNKNOWN'),
-                'runtime': info.get('RunTime', 'N/A'),
-                # TODO: maybe add something more?
-            }
+            return info
         return {'status': self.last_status or 'UNKNOWN', 'runtime': 'N/A'}
 
-    def summarize_std_out(self, model: Optional[LogSummarizerAgent] = None) -> str:
+    # TODO: handle the case of different StdOut files
+    def summarize_std_out(self, pipeline: Union[LogSummarizerAgent, SimpleLogSummarizer]) -> str:
         """Use a text summarization pipeline on the StdOut file (.out)"""
         # Retrieve StdOut file
         info_dict: Dict = self.get_job_info()
@@ -111,15 +107,7 @@ class JobMonitor:
         stdout_path: Path = Path(info_dict.get('StdOut', ''))
         if stdout_path.exists():
             try:
-                if model is not None:
-                    # Use the LogSummarizerAgent to summarize the content
-                    summary = model.summarize(stdout_path, verbose=False)
-                else:
-                    with open(stdout_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                    # Just a simple placeholder for actual summarization logic
-                    summary = content[-10:] + "..." if len(content) > 500 else content
-
+                summary = pipeline.summarize(stdout_path, verbose=False)
                 return summary
 
             except Exception as e:
@@ -169,15 +157,18 @@ class MultiJobMonitor:
             check_interval: int = 60,
             periodic_updates: bool = False,
             update_interval: int = 3600,
-            use_smrz_pipe: bool = False,  # whether to use a summarization pipeline
+            use_agent: bool = False,  # whether to use a AI for log summarization
         ):
         self.check_interval = check_interval  # seconds between checks
         self.periodic_updates = periodic_updates  # whether to send periodic summaries
         self.update_interval = update_interval  # seconds between periodic updates
 
-        self.smrz_agent = None
-        if use_smrz_pipe:
-            self.smrz_agent = LogSummarizerAgent()
+        # Keep the pipeline (especially the agent) centralized so
+        # it won't be created by each JobMonitor
+        if use_agent:
+            self.summary_pipe = LogSummarizerAgent()
+        else:
+            self.summary_pipe = SimpleLogSummarizer()
 
         self.monitors: Dict[str, JobMonitor] = {}
         self.threads: Dict[int, Thread] = {}
@@ -334,7 +325,7 @@ class MultiJobMonitor:
                     }
                     # Text summarization pipeline
                     jobs_summary = {
-                        job_id: monitor.summarize_std_out(model=self.smrz_agent)
+                        job_id: monitor.summarize_std_out(pipeline=self.summary_pipe)
                         for job_id, monitor in self.monitors.items()
                     }
 
@@ -342,7 +333,6 @@ class MultiJobMonitor:
                     self.notifier.send_summary(jobs_status)
                 if jobs_summary:
                     for job_id, summary in jobs_summary.items():
-                        
                         self.notifier.send(f"**Job {job_id} StdOut Summary:**\n{summary}", "info")
 
             # Wait for next update

@@ -2,6 +2,7 @@
 
 import time
 from pathlib import Path
+from typing import List
 import torch
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 # from typing import Dict, List, Optional
@@ -188,3 +189,23 @@ class LogSummarizerAgent:
         # Add overhead
         total_estimate_mb = param_size_mb * 1.2
         logger.info(f"Total estimated memory footprint: ~{total_estimate_mb:.1f} MB")
+
+
+class SimpleLogSummarizer:
+    """Simple pipeline that summarizes a log file"""
+
+    def __init__(self):
+        pass
+
+    def summarize(self, log_path: Path, verbose: bool = False) -> str:
+        """Simple text summarization pipeline"""
+        with open(log_path, 'r', encoding='utf-8') as f:
+            # Return a list containing each line in the file
+            content: List[str] = f.readlines()
+
+        # Take few lines from the file
+        summary: List[str] = content[-5:]
+        # Format the summary
+        summary = "".join(summary)
+
+        return summary

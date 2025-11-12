@@ -95,15 +95,19 @@ class DiscordNotifier:
     def send_summary(self, jobs_status: Dict[str, Dict]) -> None:
         """Send a summary of all monitored jobs"""        
         lines = []
+        # Gather some info from the monitored jobs
         for job_id, info in jobs_status.items():
-            job_name = info.get('job_name', "UNKNOWN")
-            status = info.get('status', 'UNKNOWN')
+            job_name = info.get('JobName', "UNKNOWN")
+            user_id = info.get('UserId', "UNKNOWN")
+            status = info.get('JobState', 'UNKNOWN')
             emoji = STATUS_EMOJI.get(status, "❓")
-            runtime = info.get('runtime', 'N/A')
-            lines.append(f"{emoji} **Job {job_id}** ({job_name}): {status} ({runtime})")
+
+            runtime = info.get('RunTime', 'N/A')
+            time_limit = info.get('TimeLimit', "N/A")
+
+            lines.append(f"{emoji} **Job {job_id}** ({job_name} - {user_id}): {status} [{runtime}/{time_limit}]")
 
         message = "\n".join(lines)
-
         embed = {
             "title": "📊 Jobs Summary",
             "description": message,
@@ -111,10 +115,14 @@ class DiscordNotifier:
             "timestamp": datetime.now().isoformat(),
         }
 
-        # Reuse the same locking and best-effort sending pattern used above.
+        # Reuse the same locking and best-effort sending pattern
         try:
             with self.lock:
-                requests.post(self.webhook_url, json={"embeds": [embed]}, timeout=10)
+                requests.post(
+                    self.webhook_url,  # send a POST request here
+                    json={"embeds": [embed]},
+                    timeout=10,  # seconds to wait for the client to make a connection
+                )
         except Exception as e:
             logger.info(f"Failed to send summary: {e}")
 

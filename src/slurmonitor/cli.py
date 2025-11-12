@@ -51,12 +51,12 @@ def main():
                        help='Send periodic summary updates')
     parser.add_argument('--update-interval', type=int, default=20*60,
                        help='Seconds between periodic summaries (default: 1200)')
-    parser.add_argument('--webhook-file', type=str, 
-                       default='./assets/my_webhook_url.txt',
-                       help='Path to file containing Discord webhook URL')
+    parser.add_argument('--webhook-file', type=str, default='./assets/my_webhook_url.txt',
+                       help='Path to file containing Discord webhook URL (so you can specify multiple webhooks)')
     parser.add_argument('--exit-when-done', action='store_true', default=True,
                        help='Exit when all jobs complete (default: True)')
-    # TODO: should automatically search for log files based on job IDs
+    parser.add_argument('--use-agent', action='store_true',
+                        help='Use an AI Agent to summarize log files o/w classical')
 
     args = parser.parse_args()
 
@@ -114,7 +114,8 @@ def main():
             discord_webhook=discord_webhook,
             check_interval=args.check_interval,
             periodic_updates=args.periodic_updates,
-            update_interval=args.update_interval
+            update_interval=args.update_interval,
+            use_agent=args.use_agent,
         )
         logger.info("✓ Monitor initialized successfully")
 
@@ -140,7 +141,7 @@ def main():
     try:
         monitor.start(exit_when_done=args.exit_when_done)
         logger.info("\n" + "=" * 70)
-        logger.info("All jobs completed - Monitor stopped")
+        logger.info("Monitor stopped")
         logger.info("=" * 70)
 
     except KeyboardInterrupt:
