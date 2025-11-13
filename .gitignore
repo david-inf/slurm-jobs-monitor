@@ -4,7 +4,6 @@ __pycache__/
 .pytest_cache/
 .vscode/
 
-assets/my_webhook_url.txt
 assets/config.yaml
 
 /logs/

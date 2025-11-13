@@ -15,6 +15,7 @@ for i in range(10):
     print(f"Progress: {i*20}%", flush=True)
     rnd_num = random.random()
     print(f"  Value: {rnd_num:.4f}")
+    print("waiting...", flush=True)
     time.sleep(15)
 
 print("Dummy job completed successfully", flush=True)

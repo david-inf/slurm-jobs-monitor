@@ -1,0 +1,30 @@
+# Example configuration for slurmonitor (YAML)
+#
+# Place this file at `./assets/config.yaml`
+
+discord:
+  # Your private Discord webhook URL
+  webhook: https://discord.com/api/webhooks/...
+
+jobs:
+  # List the Slurm job IDs to monitor (strings or numbers)
+  - 12345
+  - 12346
+
+job_status:
+  # Seconds between status checks
+  check_interval: 60
+  # Exit the program when all monitored jobs are finished
+  exit_when_done: true
+
+summary:
+  # Send periodic summaries of job states
+  periodic_updates: false
+  # Seconds between periodic summaries (if enabled)
+  update_interval: 1200
+  # Type of update to send
+  update_type: brief  # Options: brief, detailed
+  # Whether to use the AI log summarizer (requires extra deps)
+  use_agent: false
+  # Optional list of explicit log files to summarize (per-job behavior varies)
+  log_files: []

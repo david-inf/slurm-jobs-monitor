@@ -772,6 +772,7 @@ source = { editable = "." }
 dependencies = [
     { name = "accelerate" },
     { name = "bitsandbytes" },
+    { name = "pyyaml" },
     { name = "requests" },
     { name = "rich" },
     { name = "torch" },
@@ -789,6 +790,7 @@ dev = [
 requires-dist = [
     { name = "accelerate", specifier = ">=1.11.0" },
     { name = "bitsandbytes", specifier = ">=0.48.2" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "requests", specifier = ">=2.32.5" },
     { name = "rich", specifier = ">=14.2.0" },
     { name = "torch", specifier = ">=2.9.0" },
