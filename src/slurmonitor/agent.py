@@ -1,14 +1,13 @@
 """AI Agent for summarizing log files from Slurm jobs."""
 
+from .utils import logger
+
 import time
 from pathlib import Path
+from typing import List
 import torch
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 # from typing import Dict, List, Optional
-import logging
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 
 class LogSummarizerAgent:
@@ -20,7 +19,8 @@ class LogSummarizerAgent:
         device: str = "cpu",
         use_quantization: bool = True,
         max_input_length: int = 1024,
-        max_output_length: int = 256
+        max_output_length: int = 256,
+        # use_causal_model: bool = False,  # default use a seq2seq model
     ) -> None:
         """
         Initialize the LogSummarizerAgent.
@@ -56,24 +56,34 @@ class LogSummarizerAgent:
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         # Load model with optimizations
         if use_quantization and device == "cpu":
-            # Dynamic quantization for CPU (reduces memory ~4x)
-            logger.info("Loading model with int8 quantization...")
-            self.model = AutoModelForSeq2SeqLM.from_pretrained(
-                model_name,
-                torch_dtype=torch.float32
-            )
-            self.model = torch.quantization.quantize_dynamic(
-                self.model,
-                {torch.nn.Linear},
-                dtype=torch.qint8
-            )
+            # Prefer Hugging Face / bitsandbytes 8-bit loading on CPU.
+            # This requires `bitsandbytes` (bnb) and a compatible `transformers`.
+            logger.info("Attempting to load model with 8-bit quantization (bitsandbytes)...")
+            try:
+                # load_in_8bit places 8-bit params on the requested device via device_map.
+                # Use an explicit cpu device map to avoid device auto-placement.
+                self.model = AutoModelForSeq2SeqLM.from_pretrained(
+                    model_name,
+                    load_in_8bit=True,
+                    device_map={"": "cpu"},
+                )
+            except Exception as e:
+                # If bitsandbytes or compatible transformers aren't available, fall back.
+                logger.warning(
+                    "Failed to load 8-bit quantized model with bitsandbytes: %s. Falling back to float32.",
+                    e,
+                )
+                self.model = AutoModelForSeq2SeqLM.from_pretrained(
+                    model_name,
+                    dtype=torch.float32,
+                )
         else:
             # Standard loading
             dtype = torch.float16 if device == "cuda" else torch.float32
             logger.info(f"Loading model with dtype: {dtype}")
             self.model = AutoModelForSeq2SeqLM.from_pretrained(
                 model_name,
-                torch_dtype=dtype
+                dtype=dtype
             )
 
         self.model = self.model.to(device)
@@ -91,8 +101,9 @@ class LogSummarizerAgent:
     def _prompt_template(self, log_content: str) -> str:
         """Create a prompt for the model based on log content."""
         prompt = (
-            "Summarize the following Slurm job log. "
-            "Focus on key events, errors, and overall job status.\n\n"
+            "Describe in few sentences the following log file content. "
+            "This is a partial log file of a GPT pretraining.\n\n"
+            # "Focus on key events, errors, and overall job status.\n\n"
             f"{log_content}\n\n"
             "Summary:"
         )
@@ -116,7 +127,6 @@ class LogSummarizerAgent:
 
         # (2) Create prompt for the model
         prompt = self._prompt_template(log_content)
-
         # (3) Tokenize input
         inputs = self.tokenizer(
             prompt,
@@ -126,10 +136,9 @@ class LogSummarizerAgent:
         ).to(self.device)
 
         # (4) Generate summary
+        inference_start = time.time()
         if verbose:
             logger.info(f"Generating summary for: {log_path.name}")
-
-        inference_start = time.time()
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
@@ -139,7 +148,6 @@ class LogSummarizerAgent:
                 no_repeat_ngram_size=3,
             )
         self.metrics['inference_time'] = time.time() - inference_start
-
         summary = self.tokenizer.decode(
             outputs[0],
             skip_special_tokens=True,
@@ -155,7 +163,6 @@ class LogSummarizerAgent:
 
         if verbose:
             logger.info(f"Metrics: {self.metrics}")
-
         return summary
 
     def _memory_footprint(self) -> float:
@@ -180,3 +187,23 @@ class LogSummarizerAgent:
         # Add overhead
         total_estimate_mb = param_size_mb * 1.2
         logger.info(f"Total estimated memory footprint: ~{total_estimate_mb:.1f} MB")
+
+
+class SimpleLogSummarizer:
+    """Simple pipeline that summarizes a log file"""
+
+    def __init__(self):
+        pass
+
+    def summarize(self, log_path: Path, verbose: bool = False) -> str:
+        """Simple text summarization pipeline"""
+        with open(log_path, 'r', encoding='utf-8') as f:
+            # Return a list containing each line in the file
+            content: List[str] = f.readlines()
+
+        # Take few lines from the file
+        summary: List[str] = content[-10:]
+        # Format the summary
+        summary = "".join(summary)
+
+        return summary

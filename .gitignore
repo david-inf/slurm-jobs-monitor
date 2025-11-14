@@ -4,10 +4,11 @@ __pycache__/
 .pytest_cache/
 .vscode/
 
-assets/my_webhook_url.txt
 assets/config.yaml
 
 /logs/
+/tests/example_logs/
+tests/test_config.yaml
 
 /examples/
 examples/quick_start.py

@@ -1,162 +1,99 @@
-"""Main program for launching the Slurm job monitoring system"""
+"""Main program for launching the Slurm job monitoring system.
+
+This module now uses a YAML configuration file (default: `./assets/config.yaml`).
+
+Config precedence and assumptions
+- Default config path: cwd()/assets/config.yaml
+"""
 
 from .core import MultiJobMonitor
+from .utils import logger, console
 
-import argparse  # command-line arguments
+import argparse
 from pathlib import Path
-import logging
-import sys
+from typing import Any, Dict
+import yaml
 
-# Configure logging with more detailed format
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger(__name__)
 
-DESC = """
-Examples:
-  # Monitor a single job
-  %(prog)s 12345
+def load_config(config_file: Path) -> Dict[str, Any]:
+    """Load YAML configuration from `config_file`.
 
-  # Monitor multiple jobs with custom check interval
-  %(prog)s 12345 12346 12347 --check-interval 30
+    Raises SystemExit with a helpful message when configuration cannot be loaded.
+    """
+    if not config_file.is_file():
+        logger.error(f"Config file not found: {config_file}")
+        raise SystemExit(1)
 
-  # Enable periodic summaries every 10 minutes
-  %(prog)s 12345 --periodic-updates --update-interval 600
-"""
+    try:
+        with open(config_file, 'r', encoding='utf-8') as f:
+            cfg = yaml.safe_load(f) or {}
+            if not isinstance(cfg, dict):
+                logger.error(f"Invalid config structure in {config_file}: top-level mapping expected")
+                raise SystemExit(1)
+            # Validate essential fields
+            if cfg['discord']['webhook'] is None:
+                logger.error(f"Discord webhook not set in config file {config_file}")
+                raise SystemExit(1)
+            if cfg['discord']['webhook'] and isinstance(cfg['discord']['webhook'], str):
+                cfg['discord']['webhook'] = cfg['discord']['webhook'].strip()
+            return cfg
+
+    except Exception as e:
+        logger.error(f"Failed to read config file {config_file}: {e}")
+        raise SystemExit(1)
 
 
 def main():
-    """Main entry point for the Slurm job monitor CLI"""
-    logger.info("=" * 70)
-    logger.info("Slurm Job Monitor - Starting")
-    logger.info("=" * 70)
-
-    # Parse command-line arguments
-    parser = argparse.ArgumentParser(
-        description='Monitor Slurm jobs and send notifications to Discord',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=DESC
-    )
-
-    parser.add_argument('job_ids', nargs='+', 
-                       help='Slurm job IDs to monitor')
-    parser.add_argument('--check-interval', type=int, default=60,
-                       help='Seconds between status checks (default: 60)')
-    parser.add_argument('--periodic-updates', action='store_true',
-                       help='Send periodic summary updates')
-    parser.add_argument('--update-interval', type=int, default=20*60,
-                       help='Seconds between periodic summaries (default: 1200)')
-    parser.add_argument('--webhook-file', type=str, 
-                       default='./assets/my_webhook_url.txt',
-                       help='Path to file containing Discord webhook URL')
-    parser.add_argument('--exit-when-done', action='store_true', default=True,
-                       help='Exit when all jobs complete (default: True)')
-    # TODO: should automatically search for log files based on job IDs
-
+    """Main entry point: read config, initialize monitor, add jobs, and start."""
+    parser = argparse.ArgumentParser(description="Slurm Job Monitor")
+    parser.add_argument('--config-file', '-c', type=str, default="./assets/config.yaml",
+                        help="Path to configuration YAML file (default: ./assets/config.yaml)")
     args = parser.parse_args()
 
-    # Load Discord webhook URL from file
-    logger.info(f"Loading Discord webhook from: {args.webhook_file}")
-    webhook_path = Path(args.webhook_file)
+    # Load configuration
+    logger.info("Slurm Job Monitor - Starting")
+    cfg_path = Path(args.config_file)
+    logger.info(f"Loading configuration from: {cfg_path}")
+    cfg = load_config(cfg_path)
 
-    if not webhook_path.is_file():
-        logger.error(f"Discord webhook file '{webhook_path}' not found!")
-        logger.error("Please create the file with your Discord webhook URL")
-        sys.exit(1)
-
-    try:
-        with open(webhook_path, 'r', encoding='utf-8') as f:
-            discord_webhook = f.read().strip()
-
-        if not discord_webhook:
-            logger.error(f"Webhook file '{webhook_path}' is empty!")
-            sys.exit(1)
-
-        if not discord_webhook.startswith('https://discord.com/api/webhooks/'):
-            logger.warning("Webhook URL doesn't look like a Discord webhook")
-            logger.warning("Expected format: https://discord.com/api/webhooks/...")
-
-        logger.info("✓ Successfully loaded Discord webhook URL")
-
-    except Exception as e:
-        logger.error(f"Failed to read webhook file: {e}")
-        sys.exit(1)
-
-    # Validate job IDs
-    logger.info(f"Validating {len(args.job_ids)} job ID(s)...")
-    valid_job_ids = []
-    for job_id in args.job_ids:
-        if job_id.isdigit():
-            valid_job_ids.append(job_id)
-            logger.info(f"  ✓ Job ID {job_id} is valid")
-        else:
-            logger.warning(f"  ✗ Invalid job ID: '{job_id}' (must be numeric)")
-
-    if not valid_job_ids:
-        logger.error("No valid job IDs provided!")
-        sys.exit(1)
+    # Read simple options with sensible defaults
+    jobs_dict = cfg.get('jobs', {})
+    if not isinstance(jobs_dict, dict) or not jobs_dict:
+        logger.error("No jobs configured. Please add a 'jobs' list to the config with Slurm job IDs to monitor.")
+        raise SystemExit(1)
 
     # Create the monitor
-    # TODO: use a table format for better readability
-    logger.info("\nInitializing MultiJobMonitor...")
-    logger.info(f"  Check interval: {args.check_interval} seconds")
-    logger.info(f"  Periodic updates: {args.periodic_updates}")
-    if args.periodic_updates:
-        logger.info(f"  Update interval: {args.update_interval} seconds")
-
     try:
         monitor = MultiJobMonitor(
-            discord_webhook=discord_webhook,
-            check_interval=args.check_interval,
-            periodic_updates=args.periodic_updates,
-            update_interval=args.update_interval
+            discord_opts=cfg.get('discord', {}),
+            jobs_dict=jobs_dict,
+            job_status_opts=cfg.get('job_status', {}),
+            periodic_updates_opts=cfg.get('periodic_updates', {}),
         )
         logger.info("✓ Monitor initialized successfully")
-
     except Exception as e:
         logger.error(f"Failed to create monitor: {e}")
-        sys.exit(1)
-
-    # Add jobs to monitor
-    logger.info(f"\nAdding {len(valid_job_ids)} job(s) to monitor...")
-    for i, job_id in enumerate(valid_job_ids, start=1):
-        try:
-            monitor.add_job(job_id)
-            logger.info(f"  [{i}/{len(valid_job_ids)}] ✓ Added job {job_id}")
-        except Exception as e:
-            logger.error(f"  [{i}/{len(valid_job_ids)}] ✗ Failed to add job {job_id}: {e}")
+        raise SystemExit(1)
+    console.print(monitor)
 
     # Start monitoring
-    logger.info("\n" + "=" * 70)
-    logger.info(f"Monitoring {len(monitor.monitors)} job(s)")
-    logger.info("Press Ctrl+C to stop monitoring")
-    logger.info("=" * 70 + "\n")
-
+    logger.info(f"Monitoring {len(monitor.monitors)} job(s). Press Ctrl+C to stop.")
     try:
-        monitor.start(exit_when_done=args.exit_when_done)
-        logger.info("\n" + "=" * 70)
-        logger.info("All jobs completed - Monitor stopped")
-        logger.info("=" * 70)
-
+        exit_when_done = bool(cfg['job_status'].get('exit_when_done', True))
+        monitor.start(exit_when_done=exit_when_done)
+        logger.info("Monitor stopped")
     except KeyboardInterrupt:
-        logger.info("\n\nReceived interrupt signal (Ctrl+C)")
+        logger.info("Received interrupt signal (Ctrl+C)")
         monitor.stop()
-        logger.info("Monitor stopped by user")
-
     except Exception as e:
-        logger.error(f"\nUnexpected error during monitoring: {e}", exc_info=True)
+        logger.error(f"Unexpected error during monitoring: {e}", exc_info=True)
         monitor.stop()
-        sys.exit(1)
+        raise SystemExit(1)
 
 
 def hello_monitor():
-    """Just to do a test and install all packages"""
-    print("Hello from slurmonitor")
+    """Small helper used by tests or quick checks."""
+    print("Hello from slurmonitor!")
 
 
 if __name__ == "__main__":

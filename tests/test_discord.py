@@ -1,26 +1,31 @@
 """Tests for sending messages to Discord"""
 
 from slurmonitor.core import DiscordNotifier
-from slurmonitor.utils import EMOJI_MAP
+from slurmonitor.discord_notifier import EMOJI_MAP
 
 from threading import Thread, Lock
-from pathlib import Path
 from rich.console import Console
+import yaml
 
 console = Console()
 
 
 def test_discord_message():
     """Send a simple message to Discord"""
-    webhook_path: Path = Path("assets/my_webhook_url.txt")
-    if not webhook_path.is_file():
-        console.print(f"[red]Error:[/red] Discord webhook file '{webhook_path}' not found.")
-        return
-    with open(webhook_path, 'r', encoding='utf-8') as f:
-        discord_webhook = f.read().strip()
-    console.print(f"Retrieved webhook URL [bold purple]{discord_webhook}[/bold purple]")
+    console.rule("Testing Discord message sending")
+    with open("tests/test_config.yaml", 'r', encoding='utf-8') as f:
+        configs = yaml.safe_load(f)
+    assert configs is not None
+    assert isinstance(configs, dict)
+    console.print(configs)
 
-    notifier = DiscordNotifier(discord_webhook)  # who sends the messages
+    webhook = configs['discord']['webhook'].strip()
+    if not webhook:
+        console.print(f"[red]Error:[/red] Discord webhook file '{webhook}' not found.")
+        return
+    console.print(f"Retrieved webhook URL [bold purple]{webhook}[/bold purple]")
+
+    notifier = DiscordNotifier(webhook)  # who sends the messages
     msg = "Hello World!"  # content
     levels = list(EMOJI_MAP.keys())
     for level in levels:
@@ -31,14 +36,20 @@ def test_discord_message():
 
 def test_threads_discord_message():
     """Send multiple Discord messages (simulating multiple jobs)"""
-    webhook_path: Path = Path("assets/my_webhook_url.txt")
-    if not webhook_path.is_file():
-        console.print(f"[red]Error:[/red] Discord webhook file '{webhook_path}' not found.")
-        return
-    with open(webhook_path, 'r', encoding='utf-8') as f:
-        discord_webhook = f.read().strip()
+    console.rule("Testing Discord message sending with threads")
+    with open("tests/test_config.yaml", 'r', encoding='utf-8') as f:
+        configs = yaml.safe_load(f)
+    assert configs is not None
+    assert isinstance(configs, dict)
+    console.print(configs)
 
-    notifier = DiscordNotifier(discord_webhook)
+    webhook = configs['discord']['webhook'].strip()
+    if not webhook:
+        console.print(f"[red]Error:[/red] Discord webhook file '{webhook}' not found.")
+        return
+    console.print(f"Retrieved webhook URL [bold purple]{webhook}[/bold purple]")
+
+    notifier = DiscordNotifier(webhook)
     n_jobs = 3  # jobs under monitoring
     # messages for each job
     msgs = ["Hello World 1!", "Hello World 2!", "Hello World 3!"]
@@ -70,5 +81,5 @@ def test_threads_discord_message():
 
 
 if __name__ == "__main__":
-    # test_discord_message()
+    test_discord_message()
     test_threads_discord_message()

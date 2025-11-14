@@ -10,15 +10,15 @@ Design notes:
 """
 
 from .discord_notifier import DiscordNotifier
+from .agent import LogSummarizerAgent, SimpleLogSummarizer
+from .utils import logger
 
 import time
 import subprocess  # used to execute Slurm CLI commands (scontrol, squeue)
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 from threading import Thread, Lock
 import logging
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from pathlib import Path
 
 TERMINAL_STATES = [
     "COMPLETED", "FAILED", "TIMEOUT", "CANCELLED",
@@ -88,18 +88,48 @@ class JobMonitor:
             lines.append(f"Reason: `{info['Reason']}`")
 
         return '\n'.join(lines)
-    
+
     def get_status_dict(self) -> Dict:
         """Get current status as dictionary"""
         info = self.get_job_info()
         if info:
-            return {
-                'job_name': info.get('JobName', 'N/A'),
-                'status': info.get('JobState', 'UNKNOWN'),
-                'runtime': info.get('RunTime', 'N/A'),
-                # TODO: maybe add something more?
-            }
+            return info
         return {'status': self.last_status or 'UNKNOWN', 'runtime': 'N/A'}
+
+    # TODO: review and do docs on this method
+    def summarize_std_out(self, summary_opts: Optional[Dict], pipeline: Union[LogSummarizerAgent, SimpleLogSummarizer]) -> str:
+        """Use a text summarization pipeline on given log files (*.out)"""
+        # Retrieve job info
+        info_dict: Dict = self.get_job_info()
+
+        files_to_summarize = []
+        if summary_opts.get('log_files') is not None:
+            stdout_path: Path = Path(info_dict.get('StdOut', ''))
+            if 'StdOut' in summary_opts['log_files']:
+                files_to_summarize.append(stdout_path)
+            # Assume other log files are in the same parent as StdOut
+            files_to_summarize.extend([stdout_path.parent / log for log in summary_opts['log_files'] if log != 'StdOut'])
+        else:
+            # Default to StdOut only
+            stdout_path: Path = Path(info_dict.get('StdOut', ''))
+            files_to_summarize.append(stdout_path)
+
+        # Extract the StdOut key if exists
+        summary = []
+        log_file: Path
+        for log_file in files_to_summarize:
+            if log_file.exists():
+                summary.append(f"**{log_file.name}:**")
+                try:
+                    summary.append(pipeline.summarize(log_file, verbose=False))
+                except Exception as e:
+                    logger.info(f"[Job {self.job_id}] Error reading log file {log_file}: {e}, skipping...")
+                    continue
+
+            else:
+                summary.append(f"Log file {log_file} **not found**.")
+
+        return "\n".join(summary)
 
     def stop(self) -> None:
         """Stop monitoring this job"""
@@ -136,23 +166,50 @@ class MultiJobMonitor:
     - Once start() is called with exit_when_done=True, it exits when all jobs finish
     """
 
-    def __init__(self, discord_webhook: str, check_interval: int = 60,
-                 periodic_updates: bool = False, update_interval: int = 3600):
-        self.check_interval = check_interval  # seconds between checks
-        self.periodic_updates = periodic_updates  # whether to send periodic summaries
-        self.update_interval = update_interval  # seconds between periodic updates
+    def __init__(self, discord_opts: Dict, jobs_dict: Dict, job_status_opts: Dict, periodic_updates_opts: Dict):
+        # Preserve original configuration dicts
+        self.discord_opts = discord_opts
+        self.jobs_dict = jobs_dict
+        self.job_status_opts = job_status_opts
+        self.summary_opts = periodic_updates_opts
+
+        # Get job status updates settings
+        self.check_interval = int(self.job_status_opts.get('check_interval', 15))
+        # Get jobs summary updates
+        self.periodic_updates = bool(self.summary_opts.get('enabled', False))
+        self.update_interval = int(self.summary_opts.get('update_interval', 20 * 60))
+        self.update_type = self.summary_opts.get('update_type', 'brief')
+
+        # Keep the pipeline (especially the agent) centralized so
+        # it won't be created by each JobMonitor
+        if bool(self.summary_opts.get('use_agent', False)):
+            self.summary_pipe = LogSummarizerAgent()
+        else:
+            self.summary_pipe = SimpleLogSummarizer()
 
         self.monitors: Dict[str, JobMonitor] = {}
         self.threads: Dict[int, Thread] = {}
 
         self.lock = Lock()
-        self.notifier = DiscordNotifier(discord_webhook)
+        self.notifier = DiscordNotifier(discord_opts.get('webhook', ''))
         self.running = True  # launch multi-job monitor
 
         # Note: `threads` maps job_id -> Thread. Using simple threads keeps
         # the implementation easy to understand; for many concurrent jobs
         # consider switching to an event-driven model (asyncio) to reduce
         # resource usage.
+
+        self._add_jobs()
+
+    def _add_jobs(self) -> None:
+        """Add multiple jobs from the jobs_dict"""
+        logger.info(f"Adding {len(self.jobs_dict)} job(s) to monitor...")
+        for i, job_id in enumerate(self.jobs_dict.keys(), start=1):
+            try:
+                self.add_job(str(job_id))
+                logger.info(f"  [{i}/{len(self.jobs_dict)}] ✓ Added job {job_id}")
+            except Exception as e:
+                logger.error(f"  [{i}/{len(self.jobs_dict)}] ✗ Failed to add job {job_id}: {e}")
 
     def add_job(self, job_id: str) -> None:
         """
@@ -179,8 +236,8 @@ class MultiJobMonitor:
                 logging.info(f"Started monitoring job {job_id}")
                 self.notifier.send(f"Started monitoring job **{job_id}**", "info")
 
-            logger.info(f"Jobs currently monitored: {list(self.monitors.keys())}")
-            logger.info(f"Threads currently running: {list(self.threads.keys())}")
+            logger.debug(f"Jobs currently monitored: {list(self.monitors.keys())}")
+            logger.debug(f"Threads currently running: {list(self.threads.keys())}")
 
     def remove_job(self, job_id: str) -> bool:
         """
@@ -290,13 +347,29 @@ class MultiJobMonitor:
             # If there are job monitor activated
             if self.monitors:
                 with self.lock:
+                    # Get info using scontrol command
+                    # this is just a check, will be redundant but it's ok
+                    # in the simplest version it is just to check runtime
                     jobs_status = {
-                        job_id: monitor.get_status_dict() 
+                        job_id: monitor.get_status_dict()
                         for job_id, monitor in self.monitors.items()
                     }
+                    # Text summarization pipeline
+                    if self.update_type in ['detailed']:
+                        jobs_summary = {
+                            job_id: monitor.summarize_std_out(
+                                summary_opts=self.jobs_dict[job_id],
+                                pipeline=self.summary_pipe
+                            ) for job_id, monitor in self.monitors.items()
+                        }
 
                 if jobs_status:
                     self.notifier.send_summary(jobs_status)
+                    logger.info(f"Sent job status summary for {list(jobs_status.keys())}")
+                if self.update_type in ['detailed'] and jobs_summary:
+                    for job_id, summary in jobs_summary.items():
+                        self.notifier.send(f"**Job {job_id} StdOut Summary:**\n{summary}", "info")
+                        logger.info(f"Sent detailed summary for job {job_id}")
 
             # Wait for next update
             time.sleep(self.update_interval)
@@ -369,3 +442,15 @@ class MultiJobMonitor:
         logging.info("Monitor shutdown complete")
         logging.info("=" * 60)
         self.notifier.send("Slurm Monitor has been stopped.", "info")
+
+    def __str__(self) -> str:
+        """Human-friendly multi-line configuration summary for printing."""
+        webhook = getattr(self.notifier, 'webhook_url', '')[:30] + '...'
+        lines = [
+            "MultiJobMonitor configuration:",
+            f"  - webhook: {webhook}",
+            f"  - job_status_opts: {self.job_status_opts}",
+            f"  - periodic_updates: {self.summary_opts}",
+            f"  - jobs_opts: {self.jobs_dict}"
+        ]
+        return "\n".join(lines)    

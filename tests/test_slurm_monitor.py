@@ -13,6 +13,7 @@ import subprocess
 import time
 import os
 from rich.console import Console
+import yaml
 
 console = Console()
 
@@ -48,15 +49,14 @@ python3 -u {script_path}
 
 def test_slurm_monitor():
     """Testing the job monitoring on a dummy Slurm job"""
-
+    console.rule("Starting Slurm Monitor Test")
     # Step 1: Load Discord webhook URL
-    webhook_path: Path = Path("assets/my_webhook_url.txt")
-    if not webhook_path.is_file():
-        console.print(f"[red]Error:[/red] Discord webhook file '{webhook_path}' not found.")
-        return
-    with open(webhook_path, 'r', encoding='utf-8') as f:
-        discord_webhook = f.read().strip()
-    console.print("✓ Retrieved webhook URL")
+    with open("tests/test_config.yaml", 'r', encoding='utf-8') as f:
+        configs = yaml.safe_load(f)
+    assert configs is not None
+    assert isinstance(configs, dict)
+    assert isinstance(configs.get('jobs'), dict)
+    console.print(configs)
 
     # Step 2: Create a temporary Python script that will be our dummy job
     # This script just sleeps to simulate work
@@ -96,6 +96,10 @@ def test_slurm_monitor():
         output = result.stdout.strip()
         job_id = output.split()[-1]
         console.print(f"✓ Submitted job with ID: [bold green]{job_id}[/bold green]")
+        # Add job to configs for monitoring (even there's something will overwrite it)
+        configs['jobs'][str(job_id)] = {
+            'log_files': ["StdOut"]
+        }
 
     except FileNotFoundError:
         console.print("[red]Error:[/red] 'sbatch' command not found. Are you logged in to a Slurm-enabled node?")
@@ -112,10 +116,10 @@ def test_slurm_monitor():
     # Use a short check interval for testing
     console.print("\n🔍 Starting job monitor...")
     monitor = MultiJobMonitor(
-        discord_webhook=discord_webhook,
-        check_interval=5,
-        periodic_updates=True,
-        update_interval=30
+        discord_opts=configs.get('discord', {}),
+        jobs_dict=configs.get('jobs', {}),
+        job_status_opts=configs.get('job_status', {}),
+        periodic_updates_opts=configs.get('periodic_updates', {}),
     )
 
     # Add the job to monitor
