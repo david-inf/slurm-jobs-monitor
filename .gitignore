@@ -7,6 +7,8 @@ __pycache__/
 assets/config.yaml
 
 /logs/
+/tests/example_logs/
+tests/test_config.yaml
 
 /examples/
 examples/quick_start.py

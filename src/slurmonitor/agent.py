@@ -202,7 +202,7 @@ class SimpleLogSummarizer:
             content: List[str] = f.readlines()
 
         # Take few lines from the file
-        summary: List[str] = content[-5:]
+        summary: List[str] = content[-10:]
         # Format the summary
         summary = "".join(summary)
 

@@ -9,6 +9,7 @@ Config precedence and assumptions
 from .core import MultiJobMonitor
 from .utils import logger, console
 
+import argparse
 from pathlib import Path
 from typing import Any, Dict
 import yaml
@@ -44,10 +45,14 @@ def load_config(config_file: Path) -> Dict[str, Any]:
 
 def main():
     """Main entry point: read config, initialize monitor, add jobs, and start."""
-    logger.info("Slurm Job Monitor - Starting")
+    parser = argparse.ArgumentParser(description="Slurm Job Monitor")
+    parser.add_argument('--config-file', '-c', type=str, default="./assets/config.yaml",
+                        help="Path to configuration YAML file (default: ./assets/config.yaml)")
+    args = parser.parse_args()
 
     # Load configuration
-    cfg_path = Path.cwd() / 'assets' / 'config.yaml'
+    logger.info("Slurm Job Monitor - Starting")
+    cfg_path = Path(args.config_file)
     logger.info(f"Loading configuration from: {cfg_path}")
     cfg = load_config(cfg_path)
 

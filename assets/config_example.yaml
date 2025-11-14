@@ -7,9 +7,12 @@ discord:
   webhook: https://discord.com/api/webhooks/...
 
 jobs:
-  # List the Slurm job IDs to monitor (strings or numbers)
-  - 12345
-  - 12346
+  # List the Slurm job IDs to monitor
+  "12345":
+    # Optional list of explicit log files to summarize (per-job behavior varies)
+    log_files: [StdOut]
+  "12346":
+    log_files: [StdOut]
 
 job_status:
   # Seconds between status checks
@@ -26,5 +29,3 @@ summary:
   update_type: brief  # Options: brief, detailed
   # Whether to use the AI log summarizer (requires extra deps)
   use_agent: false
-  # Optional list of explicit log files to summarize (per-job behavior varies)
-  log_files: []

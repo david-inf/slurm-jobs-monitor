@@ -365,7 +365,7 @@ class MultiJobMonitor:
 
                 if jobs_status:
                     self.notifier.send_summary(jobs_status)
-                    logger.info("Sent job status summary")
+                    logger.info(f"Sent job status summary for {list(jobs_status.keys())}")
                 if self.update_type in ['detailed'] and jobs_summary:
                     for job_id, summary in jobs_summary.items():
                         self.notifier.send(f"**Job {job_id} StdOut Summary:**\n{summary}", "info")
